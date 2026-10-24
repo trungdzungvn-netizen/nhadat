@@ -1,115 +1,271 @@
-import { ShieldCheck, Plus, Calendar, Users, Building, ArrowUpRight } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import Image from 'next/image';
+import { 
+  Building, Users, Calendar, ShieldCheck, LogOut, 
+  MapPin, Phone, Mail, CheckCircle2, Clock, Filter, AlertCircle 
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
-import type { Property, Lead, Appointment } from '@/types';
+import { logoutUser } from '@/app/actions/auth';
+import type { Property, Lead, Appointment, Broker } from '@/types';
 
 export const revalidate = 0;
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: { broker_filter?: string };
+}) {
   const supabase = await createClient();
 
-  const { data: properties } = await supabase.from('properties').select('*').order('created_at', { ascending: false });
-  const { data: leads } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
-  const { data: appointments } = await supabase.from('appointments').select('*').order('created_at', { ascending: false });
+  // 1. Kiểm tra đăng nhập
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    redirect('/login');
+  }
 
-  const totalProps = properties?.length || 0;
-  const totalLeads = leads?.length || 0;
-  const totalAppts = appointments?.length || 0;
+  // 2. Lấy thông tin Môi giới tương ứng với user đang đăng nhập
+  const { data: currentBrokerData } = await supabase
+    .from('brokers')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  // Kiểm tra vai trò Admin (có is_admin = true hoặc email admin)
+  const isAdmin = currentBrokerData?.is_admin === true || user.email?.includes('admin');
+  const currentBroker = currentBrokerData as Broker | null;
+
+  // 3. Chuẩn bị truy vấn dữ liệu theo vai trò
+  let propQuery = supabase.from('properties').select('*, brokers(*)').order('created_at', { ascending: false });
+  let leadQuery = supabase.from('leads').select('*, properties(*)').order('created_at', { ascending: false });
+  let apptQuery = supabase.from('appointments').select('*, properties(*)').order('created_at', { ascending: false });
+
+  // Danh sách môi giới cho bộ lọc của Admin
+  let allBrokers: Broker[] = [];
+  if (isAdmin) {
+    const { data: bList } = await supabase.from('brokers').select('*').order('full_name');
+    allBrokers = (bList || []) as Broker[];
+
+    // Nếu admin chọn lọc theo 1 môi giới cụ thể
+    if (searchParams.broker_filter) {
+      propQuery = propQuery.eq('broker_id', searchParams.broker_filter);
+      leadQuery = leadQuery.eq('broker_id', searchParams.broker_filter);
+      apptQuery = apptQuery.eq('broker_id', searchParams.broker_filter);
+    }
+  } else {
+    // MÔI GIỚI THƯỜNG: CHỈ XEM DỮ LIỆU CỦA CHÍNH MÌNH
+    const brokerId = currentBroker?.id;
+    if (brokerId) {
+      propQuery = propQuery.eq('broker_id', brokerId);
+      leadQuery = leadQuery.eq('broker_id', brokerId);
+      apptQuery = apptQuery.eq('broker_id', brokerId);
+    } else {
+      // Chưa liên kết hồ sơ môi giới
+      propQuery = propQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+    }
+  }
+
+  const [{ data: properties }, { data: leads }, { data: appointments }] = await Promise.all([
+    propQuery,
+    leadQuery,
+    apptQuery,
+  ]);
+
+  const propsList = (properties || []) as Property[];
+  const leadsList = (leads || []) as any[];
+  const apptsList = (appointments || []) as any[];
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-      {/* HEADER WORKSPACE */}
-      <div className="flex flex-col justify-between gap-4 border-b border-stone-200 pb-6 sm:flex-row sm:items-center">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-champagne-400 px-3 py-1 text-[11px] font-black text-navy-950">BROKER WORKSPACE</span>
-            <span className="text-xs text-stone-500">TP.HCM – Đồng Nai</span>
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      {/* THANH THÔNG TIN TÀI KHOẢN VÀ ĐĂNG XUẤT */}
+      <div className="flex flex-col justify-between gap-4 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
+        <div className="flex items-center gap-4">
+          <div className="relative h-14 w-14 overflow-hidden rounded-2xl border-2 border-champagne-400 bg-navy-900 shadow-md">
+            <Image
+              src={currentBroker?.avatar_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80'}
+              alt="Avatar"
+              fill
+              className="object-cover"
+            />
           </div>
-          <h1 className="mt-2 text-2xl font-black text-navy-950 sm:text-3xl">Không Gian Làm Việc Môi Giới</h1>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-black text-navy-950">
+                {isAdmin ? 'Quản Trị Viên (Admin)' : (currentBroker?.full_name || user.email)}
+              </h1>
+              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                isAdmin ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-champagne-100 text-champagne-800 border border-champagne-300'
+              }`}>
+                {isAdmin ? 'Tổng Quản Trị Hệ Thống' : 'Môi Giới Xác Thực'}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-stone-500">
+              {isAdmin ? 'Đang xem toàn bộ dữ liệu sàn TP.HCM – Đồng Nai' : `Khu vực: ${currentBroker?.coverage_areas?.join(', ') || 'Chưa cập nhật'}`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <form action={logoutUser}>
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition"
+            >
+              <LogOut size={15} /> Đăng xuất
+            </button>
+          </form>
         </div>
       </div>
 
-      {/* 4 PHÂN HỆ THỐNG KÊ NHANH */}
-      <div className="mt-8 grid gap-4 sm:grid-cols-4">
+      {/* BỘ LỌC CỦA ADMIN (CHỈ HIỂN THỊ KHI LÀ ADMIN) */}
+      {isAdmin && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-champagne-300 bg-champagne-50/60 p-4">
+          <div className="flex items-center gap-2 text-xs font-bold text-navy-900">
+            <Filter size={16} className="text-champagne-600" />
+            <span>Chế độ Admin: Lọc thông tin theo từng môi giới</span>
+          </div>
+          <form method="GET" action="/dashboard" className="flex items-center gap-2">
+            <select
+              name="broker_filter"
+              defaultValue={searchParams.broker_filter || ''}
+              className="rounded-xl border border-champagne-300 bg-white px-3 py-2 text-xs font-semibold text-navy-900 focus:outline-none"
+            >
+              <option value="">Xem chung tất cả ({allBrokers.length} môi giới)</option>
+              {allBrokers.map((b) => (
+                <option key={b.id} value={b.id}>
+                  Môi giới: {b.full_name} ({b.phone})
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              className="rounded-xl bg-navy-900 px-4 py-2 text-xs font-bold text-champagne-300 hover:bg-navy-800"
+            >
+              Lọc dữ liệu
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* THỐNG KÊ 4 PHÂN HỆ CỐT LÕI */}
+      <div className="mt-6 grid gap-4 sm:grid-cols-4">
         <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between text-navy-900">
-            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">1. Nguồn Hàng</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Nguồn Hàng Đang Bán</span>
             <Building size={20} className="text-champagne-500" />
           </div>
-          <p className="mt-3 text-3xl font-black text-navy-950">{totalProps}</p>
-          <p className="mt-1 text-[11px] text-emerald-600 font-semibold">Đang quản lý trên sàn</p>
+          <p className="mt-3 text-3xl font-black text-navy-950">{propsList.length}</p>
+          <p className="mt-1 text-[11px] text-emerald-600 font-semibold">
+            {isAdmin ? 'Toàn sàn quản lý' : 'Sản phẩm của bạn'}
+          </p>
         </div>
 
         <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between text-navy-900">
-            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">2. Khách Hàng (Leads)</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Khách Hàng (Leads)</span>
             <Users size={20} className="text-champagne-500" />
           </div>
-          <p className="mt-3 text-3xl font-black text-navy-950">{totalLeads}</p>
-          <p className="mt-1 text-[11px] text-blue-600 font-semibold">Yêu cầu tư vấn mới</p>
+          <p className="mt-3 text-3xl font-black text-navy-950">{leadsList.length}</p>
+          <p className="mt-1 text-[11px] text-blue-600 font-semibold">
+            {isAdmin ? 'Tổng khách toàn hệ thống' : 'Khách cần chăm sóc'}
+          </p>
         </div>
 
         <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between text-navy-900">
-            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">3. Lịch Hẹn Xem Nhà</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Lịch Hẹn Xem Nhà</span>
             <Calendar size={20} className="text-champagne-500" />
           </div>
-          <p className="mt-3 text-3xl font-black text-navy-950">{totalAppts}</p>
-          <p className="mt-1 text-[11px] text-amber-600 font-semibold">Lịch hẹn khách gửi</p>
+          <p className="mt-3 text-3xl font-black text-navy-950">{apptsList.length}</p>
+          <p className="mt-1 text-[11px] text-amber-600 font-semibold">
+            {isAdmin ? 'Tổng lịch toàn sàn' : 'Lịch hẹn cần đi dẫn'}
+          </p>
         </div>
 
         <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between text-navy-900">
-            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">4. Giao Dịch</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Hiệu Quả Tư Vấn</span>
             <ShieldCheck size={20} className="text-champagne-500" />
           </div>
-          <p className="mt-3 text-3xl font-black text-navy-950">98.5%</p>
-          <p className="mt-1 text-[11px] text-emerald-600 font-semibold">Tỷ lệ hài lòng</p>
+          <p className="mt-3 text-3xl font-black text-navy-950">{currentBroker?.rating || '4.9'}★</p>
+          <p className="mt-1 text-[11px] text-emerald-600 font-semibold">Xác thực chứng chỉ</p>
         </div>
       </div>
 
-      {/* DANH SÁCH LỊCH HẸN & KHÁCH HÀNG MỚI */}
-      <div className="mt-10 grid gap-8 lg:grid-cols-2">
-        {/* LỊCH HẸN GẦN NHẤT */}
+      {/* NỘI DUNG CHI TIẾT 2 CỘT */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-2">
+        {/* CỘT 1: LỊCH HẸN XEM NHÀ */}
         <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-black text-navy-950">Lịch Hẹn Xem Nhà Mới Nhất</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-black text-navy-950 flex items-center gap-2">
+              <Calendar size={18} className="text-champagne-600" /> Lịch Hẹn Xem Nhà Thực Tế ({apptsList.length})
+            </h2>
+          </div>
+
           <div className="mt-4 space-y-3">
-            {appointments && appointments.length > 0 ? (
-              appointments.map((appt: any) => (
-                <div key={appt.id} className="flex items-center justify-between rounded-2xl bg-sand-50 p-4 border border-stone-200">
-                  <div>
-                    <p className="font-bold text-navy-950 text-xs sm:text-sm">{appt.customer_name} · {appt.customer_phone}</p>
-                    <p className="text-[11px] text-stone-500 mt-0.5">Ngày: {appt.appointment_date} · Khung: {appt.time_slot}</p>
-                    {appt.note && <p className="text-[11px] text-stone-600 italic mt-1">"{appt.note}"</p>}
+            {apptsList.length > 0 ? (
+              apptsList.map((appt) => (
+                <div key={appt.id} className="rounded-2xl border border-stone-200 bg-sand-50/60 p-4 transition hover:bg-sand-50">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-bold text-navy-950 text-sm">
+                        {appt.customer_name} · <a href={`tel:${appt.customer_phone}`} className="text-blue-700 underline">{appt.customer_phone}</a>
+                      </p>
+                      <p className="text-xs text-stone-600 font-medium mt-1">
+                        Sản phẩm: {appt.properties?.title || 'Bất động sản'}
+                      </p>
+                      <div className="mt-2 flex items-center gap-3 text-[11px] text-stone-500">
+                        <span className="flex items-center gap-1 font-semibold text-navy-900">
+                          <Clock size={13} className="text-champagne-600" /> {appt.appointment_date} ({appt.time_slot})
+                        </span>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-[10px] font-bold text-amber-800">
+                      {appt.status}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-amber-100 px-3 py-1 text-[10px] font-bold text-amber-800">
-                    {appt.status}
-                  </span>
+                  {appt.note && (
+                    <p className="mt-2 text-xs italic text-stone-500 bg-white p-2 rounded-lg border border-stone-200">
+                      "{appt.note}"
+                    </p>
+                  )}
                 </div>
               ))
             ) : (
-              <p className="text-xs text-stone-500 py-6 text-center">Chưa có lịch hẹn xem nhà nào.</p>
+              <p className="py-8 text-center text-xs text-stone-500">Chưa có lịch hẹn nào được ghi nhận.</p>
             )}
           </div>
         </div>
 
-        {/* NGUỒN KHÁCH HÀNG TIỀM NĂNG */}
+        {/* CỘT 2: KHÁCH HÀNG TIỀM NĂNG (LEADS) */}
         <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-black text-navy-950">Khách Hàng Cần Tư Vấn (Leads)</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-black text-navy-950 flex items-center gap-2">
+              <Users size={18} className="text-champagne-600" /> Khách Hàng Tiềm Năng (Leads) ({leadsList.length})
+            </h2>
+          </div>
+
           <div className="mt-4 space-y-3">
-            {leads && leads.length > 0 ? (
-              leads.map((lead: any) => (
-                <div key={lead.id} className="flex items-center justify-between rounded-2xl bg-sand-50 p-4 border border-stone-200">
-                  <div>
-                    <p className="font-bold text-navy-950 text-xs sm:text-sm">{lead.customer_name} · {lead.customer_phone}</p>
-                    <p className="text-[11px] text-stone-500 mt-0.5">{lead.note || 'Yêu cầu tư vấn thông tin bất động sản'}</p>
+            {leadsList.length > 0 ? (
+              leadsList.map((lead) => (
+                <div key={lead.id} className="rounded-2xl border border-stone-200 bg-sand-50/60 p-4 transition hover:bg-sand-50">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-bold text-navy-950 text-sm">
+                        {lead.customer_name} · <a href={`tel:${lead.customer_phone}`} className="text-blue-700 underline">{lead.customer_phone}</a>
+                      </p>
+                      <p className="mt-1 text-xs text-stone-600">{lead.note || 'Khách quan tâm nguồn hàng'}</p>
+                      <p className="mt-1.5 text-[11px] text-stone-400">
+                        Ngày nhận: {new Date(lead.created_at).toLocaleDateString('vi-VN')}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-blue-100 px-3 py-1 text-[10px] font-bold text-blue-800 uppercase">
+                      {lead.stage}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-blue-100 px-3 py-1 text-[10px] font-bold text-blue-800">
-                    {lead.stage}
-                  </span>
                 </div>
               ))
             ) : (
-              <p className="text-xs text-stone-500 py-6 text-center">Chưa có khách hàng tiềm năng mới.</p>
+              <p className="py-8 text-center text-xs text-stone-500">Chưa có khách hàng nào trong giỏ hàng.</p>
             )}
           </div>
         </div>
