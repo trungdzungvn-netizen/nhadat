@@ -1,13 +1,15 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 
-export async function updateBrokerProfile(formData: FormData) {
+export async function adminUpdateBroker(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Vui lòng đăng nhập.');
+  if (!user) redirect('/login');
 
+  const brokerId = String(formData.get('broker_id') || '').trim();
   const fullName = String(formData.get('full_name') || '').trim();
   const phone = String(formData.get('phone') || '').trim();
   const zaloPhone = String(formData.get('zalo_phone') || '').trim();
@@ -15,23 +17,25 @@ export async function updateBrokerProfile(formData: FormData) {
   const licenseNumber = String(formData.get('license_number') || '').trim();
   const bio = String(formData.get('bio') || '').trim();
   const experienceYears = Number(formData.get('experience_years') || 0);
-  
-  // Mảng khu vực & chuyên môn (tách theo dấu phẩy)
+  const isVerified = formData.get('is_verified') === 'on';
+  const isAdmin = formData.get('is_admin') === 'on';
+
+  // Tách mảng khu vực & chuyên môn
   const coverageAreas = String(formData.get('coverage_areas') || '')
     .split(',')
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 
   const specializations = String(formData.get('specializations') || '')
     .split(',')
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 
-  if (!fullName || !phone) {
-    throw new Error('Họ tên và số điện thoại là bắt buộc.');
+  if (!brokerId || !fullName || !phone) {
+    throw new Error('Vui lòng nhập đầy đủ họ tên và số điện thoại.');
   }
 
-  // Cập nhật profile môi giới tương ứng với user_id hiện tại
+  // Cập nhật thông tin vào bảng brokers
   const { error } = await supabase
     .from('brokers')
     .update({
@@ -44,43 +48,18 @@ export async function updateBrokerProfile(formData: FormData) {
       experience_years: experienceYears,
       coverage_areas: coverageAreas,
       specializations: specializations,
+      is_verified: isVerified,
+      is_admin: isAdmin,
       updated_at: new Date().toISOString(),
     })
-    .eq('user_id', user.id);
-
-  if (error) {
-    throw new Error(`Cập nhật thất bại: ${error.message}`);
-  }
-
-  revalidatePath('/dashboard');
-  revalidatePath('/dashboard/profile');
-  revalidatePath('/');
-}
-
-// Dành cho Admin: Quản lý / Xác thực môi giới
-export async function toggleBrokerVerification(brokerId: string, currentStatus: boolean) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Yêu cầu đăng nhập.');
-
-  // Kiểm tra quyền admin
-  const { data: adminCheck } = await supabase
-    .from('brokers')
-    .select('is_admin')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  if (!adminCheck?.is_admin && !user.email?.includes('admin')) {
-    throw new Error('Bạn không có quyền thực hiện thao tác này.');
-  }
-
-  const { error } = await supabase
-    .from('brokers')
-    .update({ is_verified: !currentStatus })
     .eq('id', brokerId);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(`Cập nhật thông tin môi giới thất bại: ${error.message}`);
+  }
 
-  revalidatePath('/dashboard/brokers');
   revalidatePath('/');
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/brokers');
+  redirect('/dashboard/brokers?updated=1');
 }
