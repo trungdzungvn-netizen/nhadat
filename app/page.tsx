@@ -1,239 +1,296 @@
-import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import Image from 'next/image';
-import { Search, MapPin, ShieldCheck, Award, ArrowUpRight, Bed, Bath, Maximize2, Users, CheckCircle } from 'lucide-react';
+import Link from 'next/link';
+import { 
+  Building, Users, Calendar, ShieldCheck, LogOut, 
+  MapPin, Phone, Mail, CheckCircle2, Clock, Filter, AlertCircle, UserCheck 
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
-import type { Property, Broker } from '@/types';
+import { logoutUser } from '@/app/actions/auth';
+import type { Property, Lead, Appointment, Broker } from '@/types';
 
 export const revalidate = 0;
 
-export default async function HomePage({
+export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { city?: string; property_type?: string; q?: string };
+  searchParams: { broker_filter?: string };
 }) {
   const supabase = await createClient();
 
-  // Query Properties
-  let query = supabase.from('properties').select('*, brokers(*)').order('is_featured', { ascending: false }).order('created_at', { ascending: false });
-
-  if (searchParams.city) {
-    query = query.eq('city', searchParams.city);
-  }
-  if (searchParams.property_type) {
-    query = query.eq('property_type', searchParams.property_type);
-  }
-  if (searchParams.q) {
-    query = query.ilike('title', `%${searchParams.q}%`);
+  // 1. Kiểm tra phiên đăng nhập
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    redirect('/login');
   }
 
-  const { data: propertiesData } = await query;
-  const properties = (propertiesData || []) as Property[];
+  // 2. Lấy thông tin Môi giới tương ứng với user đang đăng nhập
+  const { data: currentBrokerData } = await supabase
+    .from('brokers')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle();
 
-  // Query Brokers
-  const { data: brokersData } = await supabase.from('brokers').select('*').limit(3);
-  const brokers = (brokersData || []) as Broker[];
+  // Kiểm tra vai trò Admin (có is_admin = true hoặc email admin)
+  const isAdmin = currentBrokerData?.is_admin === true || user.email?.includes('admin');
+  const currentBroker = currentBrokerData as Broker | null;
+
+  // 3. Chuẩn bị truy vấn dữ liệu theo phân quyền
+  let propQuery = supabase.from('properties').select('*, brokers(*)').order('created_at', { ascending: false });
+  let leadQuery = supabase.from('leads').select('*, properties(*)').order('created_at', { ascending: false });
+  let apptQuery = supabase.from('appointments').select('*, properties(*)').order('created_at', { ascending: false });
+
+  // Danh sách toàn bộ môi giới cho bộ lọc của Admin
+  let allBrokers: Broker[] = [];
+  if (isAdmin) {
+    const { data: bList } = await supabase.from('brokers').select('*').order('full_name');
+    allBrokers = (bList || []) as Broker[];
+
+    // Nếu Admin chọn lọc theo 1 môi giới cụ thể
+    if (searchParams.broker_filter) {
+      propQuery = propQuery.eq('broker_id', searchParams.broker_filter);
+      leadQuery = leadQuery.eq('broker_id', searchParams.broker_filter);
+      apptQuery = apptQuery.eq('broker_id', searchParams.broker_filter);
+    }
+  } else {
+    // Môi giới thường: chỉ xem dữ liệu do chính mình phụ trách
+    const brokerId = currentBroker?.id;
+    if (brokerId) {
+      propQuery = propQuery.eq('broker_id', brokerId);
+      leadQuery = leadQuery.eq('broker_id', brokerId);
+      apptQuery = apptQuery.eq('broker_id', brokerId);
+    } else {
+      propQuery = propQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+    }
+  }
+
+  const [{ data: properties }, { data: leads }, { data: appointments }] = await Promise.all([
+    propQuery,
+    leadQuery,
+    apptQuery,
+  ]);
+
+  const propsList = (properties || []) as Property[];
+  const leadsList = (leads || []) as any[];
+  const apptsList = (appointments || []) as any[];
 
   return (
-    <>
-      {/* 1. HERO SECTION - LUXURY BROKERAGE BRAND */}
-      <section className="relative overflow-hidden bg-navy-950 py-20 text-white lg:py-28">
-        <div className="absolute inset-0 z-0 opacity-20" style={{
-          backgroundImage: 'radial-gradient(#C5A059 1px, transparent 1px)',
-          backgroundSize: '28px 28px'
-        }} />
-
-        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-champagne-400/40 bg-navy-900/80 px-4 py-1.5 text-xs font-bold text-champagne-300 backdrop-blur-md">
-              <ShieldCheck size={16} className="text-champagne-400" /> NỀN TẢNG MÔI GIỚI BẤT ĐỘNG SẢN CHUYÊN NGHIỆP
-            </div>
-            <h1 className="mt-6 text-3xl font-black leading-tight sm:text-5xl lg:text-6xl">
-              Nguồn Hàng Xác Thực.<br />
-              <span className="bg-gradient-to-r from-champagne-300 via-champagne-400 to-champagne-600 bg-clip-text text-transparent">
-                Môi Giới Tận Tâm.
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      {/* THANH THÔNG TIN TÀI KHOẢN VÀ THAO TÁC NHANH */}
+      <div className="flex flex-col justify-between gap-4 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
+        <div className="flex items-center gap-4">
+          <div className="relative h-14 w-14 overflow-hidden rounded-2xl border-2 border-champagne-400 bg-navy-900 shadow-md">
+            <Image
+              src={currentBroker?.avatar_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80'}
+              alt="Avatar"
+              fill
+              className="object-cover"
+            />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-black text-navy-950">
+                {isAdmin ? 'Quản Trị Viên (Admin)' : (currentBroker?.full_name || user.email)}
+              </h1>
+              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                isAdmin 
+                  ? 'bg-rose-100 text-rose-800 border border-rose-300' 
+                  : 'bg-champagne-100 text-champagne-800 border border-champagne-300'
+              }`}>
+                {isAdmin ? 'Tổng Quản Trị Hệ Thống' : 'Môi Giới Xác Thực'}
               </span>
-            </h1>
-            <p className="mt-5 text-sm leading-relaxed text-stone-300 sm:text-base">
-              Hệ thống sàn giao dịch chọn lọc tại khu vực kinh tế trọng điểm <strong>TP.HCM – Đồng Nai</strong>. Bảo đảm pháp lý minh bạch, định giá chính xác và hỗ trợ xem nhà thực tế 24/7.
+            </div>
+            <p className="mt-0.5 text-xs text-stone-500">
+              {isAdmin 
+                ? 'Đang xem toàn bộ dữ liệu sàn TP.HCM – Đồng Nai' 
+                : `Khu vực: ${currentBroker?.coverage_areas?.join(', ') || 'Chưa cập nhật'}`}
             </p>
           </div>
-
-          {/* QUICK SEARCH BAR */}
-          <div className="mx-auto mt-10 max-w-4xl rounded-3xl border border-champagne-400/30 bg-navy-900/90 p-4 shadow-2xl backdrop-blur-xl">
-            <form action="/" method="GET" className="grid gap-3 sm:grid-cols-4">
-              <div className="sm:col-span-2">
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-champagne-400">Từ khóa tìm kiếm</label>
-                <div className="mt-1 flex items-center gap-2 rounded-xl border border-navy-700 bg-navy-950 px-3 py-2.5">
-                  <Search size={16} className="text-stone-400" />
-                  <input
-                    type="text"
-                    name="q"
-                    defaultValue={searchParams.q || ''}
-                    placeholder="Dự án, đường, khu vực..."
-                    className="w-full bg-transparent text-xs text-white placeholder-stone-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-champagne-400">Thị trường</label>
-                <select
-                  name="city"
-                  defaultValue={searchParams.city || ''}
-                  className="mt-1 w-full rounded-xl border border-navy-700 bg-navy-950 px-3 py-2.5 text-xs text-white focus:outline-none"
-                >
-                  <option value="">Toàn bộ khu vực</option>
-                  <option value="Đồng Nai">Đồng Nai (Biên Hòa, Long Thành)</option>
-                  <option value="TP.HCM">TP.HCM (Thủ Đức, Q1, Q7)</option>
-                </select>
-              </div>
-
-              <div className="flex items-end">
-                <button
-                  type="submit"
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-champagne-400 to-champagne-600 py-3 text-xs font-black text-navy-950 shadow-md transition hover:brightness-110"
-                >
-                  <Search size={14} /> TÌM SẢN PHẨM
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* TRUST BADGES */}
-          <div className="mt-10 grid grid-cols-2 gap-4 border-t border-navy-900 pt-8 sm:grid-cols-4 text-center">
-            <div>
-              <p className="text-2xl font-black text-champagne-400">100%</p>
-              <p className="text-xs text-stone-400 mt-1">Pháp lý kiểm tra trước</p>
-            </div>
-            <div>
-              <p className="text-2xl font-black text-champagne-400">500+</p>
-              <p className="text-xs text-stone-400 mt-1">Nguồn hàng độc quyền</p>
-            </div>
-            <div>
-              <p className="text-2xl font-black text-champagne-400">24/7</p>
-              <p className="text-xs text-stone-400 mt-1">Đặt lịch xem nhà thực tế</p>
-            </div>
-            <div>
-              <p className="text-2xl font-black text-champagne-400">TP.HCM - ĐN</p>
-              <p className="text-xs text-stone-400 mt-1">Chuyên sâu khu vực</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 2. SẢN PHẨM TIÊU BIỂU (Listings Grid) */}
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <span className="text-xs font-bold uppercase tracking-widest text-champagne-600">Nguồn Hàng Chọn Lọc</span>
-            <h2 className="mt-1 text-2xl font-black text-navy-950 sm:text-3xl">Bất Động Sản Nổi Bật</h2>
-            <p className="mt-1 text-xs text-stone-500">Giỏ hàng đã xác thực sổ hồng, giá chuẩn làm việc trực tiếp môi giới phụ trách.</p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs font-semibold">
-            <Link href="/" className="rounded-full bg-navy-900 px-4 py-2 text-white">Tất cả</Link>
-            <Link href="/?city=Đồng Nai" className="rounded-full bg-white border border-stone-200 px-4 py-2 text-navy-900 hover:bg-sand-100">Đồng Nai</Link>
-            <Link href="/?city=TP.HCM" className="rounded-full bg-white border border-stone-200 px-4 py-2 text-navy-900 hover:bg-sand-100">TP.HCM</Link>
-          </div>
         </div>
 
-        <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {properties.map((property) => (
-            <article
-              key={property.id}
-              className="group overflow-hidden rounded-3xl border border-champagne-200/70 bg-white shadow-md transition hover:-translate-y-1.5 hover:shadow-2xl"
+        {/* CÁC NÚT ĐIỀU HƯỚNG QUẢN LÝ */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Link
+            href="/dashboard/profile"
+            className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs font-bold text-navy-950 shadow-sm transition hover:bg-sand-50"
+          >
+            Chỉnh sửa hồ sơ
+          </Link>
+
+          {isAdmin && (
+            <Link
+              href="/dashboard/brokers"
+              className="rounded-xl bg-champagne-500 px-4 py-2.5 text-xs font-black text-navy-950 shadow-sm transition hover:brightness-105"
             >
-              <Link href={`/properties/${property.id}`}>
-                <div className="relative aspect-[16/10] overflow-hidden bg-navy-900">
-                  <Image
-                    src={property.cover_image}
-                    alt={property.title}
-                    fill
-                    className="object-cover transition duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-navy-950/70 via-transparent to-transparent" />
-                  
-                  <span className="absolute left-4 top-4 rounded-full bg-navy-950/85 px-3 py-1 text-[11px] font-bold text-champagne-300 backdrop-blur-md">
-                    {property.property_type}
-                  </span>
+              Quản lý đội ngũ ({allBrokers.length})
+            </Link>
+          )}
 
-                  {property.is_exclusive && (
-                    <span className="absolute right-4 top-4 rounded-full bg-champagne-500 px-3 py-1 text-[11px] font-black text-navy-950 shadow-md">
-                      ĐỘC QUYỀN
+          <form action={logoutUser}>
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-4 py-2.5 text-xs font-bold text-stone-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+            >
+              <LogOut size={15} /> Đăng xuất
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* BỘ LỌC CỦA ADMIN (CHỈ HIỂN THỊ KHI ĐĂNG NHẬP VỚI QUYỀN ADMIN) */}
+      {isAdmin && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-champagne-300 bg-champagne-50/60 p-4">
+          <div className="flex items-center gap-2 text-xs font-bold text-navy-900">
+            <Filter size={16} className="text-champagne-600" />
+            <span>Chế độ Admin: Lọc thông tin theo từng môi giới</span>
+          </div>
+          <form method="GET" action="/dashboard" className="flex items-center gap-2">
+            <select
+              name="broker_filter"
+              defaultValue={searchParams.broker_filter || ''}
+              className="rounded-xl border border-champagne-300 bg-white px-3 py-2 text-xs font-semibold text-navy-900 focus:outline-none"
+            >
+              <option value="">Xem chung tất cả ({allBrokers.length} môi giới)</option>
+              {allBrokers.map((b) => (
+                <option key={b.id} value={b.id}>
+                  Môi giới: {b.full_name} ({b.phone})
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              className="rounded-xl bg-navy-900 px-4 py-2 text-xs font-bold text-champagne-300 hover:bg-navy-800"
+            >
+              Lọc dữ liệu
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* THỐNG KÊ 4 PHÂN HỆ CỐT LÕI */}
+      <div className="mt-6 grid gap-4 sm:grid-cols-4">
+        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between text-navy-900">
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Nguồn Hàng Đang Bán</span>
+            <Building size={20} className="text-champagne-500" />
+          </div>
+          <p className="mt-3 text-3xl font-black text-navy-950">{propsList.length}</p>
+          <p className="mt-1 text-[11px] font-semibold text-emerald-600">
+            {isAdmin ? 'Toàn sàn quản lý' : 'Sản phẩm của bạn'}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between text-navy-900">
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Khách Hàng (Leads)</span>
+            <Users size={20} className="text-champagne-500" />
+          </div>
+          <p className="mt-3 text-3xl font-black text-navy-950">{leadsList.length}</p>
+          <p className="mt-1 text-[11px] font-semibold text-blue-600">
+            {isAdmin ? 'Tổng khách toàn hệ thống' : 'Khách cần chăm sóc'}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between text-navy-900">
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Lịch Hẹn Xem Nhà</span>
+            <Calendar size={20} className="text-champagne-500" />
+          </div>
+          <p className="mt-3 text-3xl font-black text-navy-950">{apptsList.length}</p>
+          <p className="mt-1 text-[11px] font-semibold text-amber-600">
+            {isAdmin ? 'Tổng lịch toàn sàn' : 'Lịch hẹn cần đi dẫn'}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between text-navy-900">
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Hiệu Quả Tư Vấn</span>
+            <ShieldCheck size={20} className="text-champagne-500" />
+          </div>
+          <p className="mt-3 text-3xl font-black text-navy-950">{currentBroker?.rating || '4.9'}★</p>
+          <p className="mt-1 text-[11px] font-semibold text-emerald-600">Xác thực chứng chỉ</p>
+        </div>
+      </div>
+
+      {/* CHI TIẾT 2 CỘT: LỊCH HẸN & KHÁCH HÀNG */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-2">
+        {/* CỘT 1: LỊCH HẸN XEM NHÀ */}
+        <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-base font-black text-navy-950">
+              <Calendar size={18} className="text-champagne-600" /> Lịch Hẹn Xem Nhà Thực Tế ({apptsList.length})
+            </h2>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {apptsList.length > 0 ? (
+              apptsList.map((appt) => (
+                <div key={appt.id} className="rounded-2xl border border-stone-200 bg-sand-50/60 p-4 transition hover:bg-sand-50">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold text-navy-950">
+                        {appt.customer_name} · <a href={`tel:${appt.customer_phone}`} className="text-blue-700 underline">{appt.customer_phone}</a>
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-stone-600">
+                        Sản phẩm: {appt.properties?.title || 'Bất động sản'}
+                      </p>
+                      <div className="mt-2 flex items-center gap-3 text-[11px] text-stone-500">
+                        <span className="flex items-center gap-1 font-semibold text-navy-900">
+                          <Clock size={13} className="text-champagne-600" /> {appt.appointment_date} ({appt.time_slot})
+                        </span>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-[10px] font-bold text-amber-800">
+                      {appt.status}
                     </span>
+                  </div>
+                  {appt.note && (
+                    <p className="mt-2 rounded-lg border border-stone-200 bg-white p-2 text-xs italic text-stone-500">
+                      "{appt.note}"
+                    </p>
                   )}
-
-                  <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between text-white">
-                    <p className="text-xl font-black text-champagne-300">{property.price_display}</p>
-                    <p className="text-xs text-stone-200">{property.area_m2} m²</p>
-                  </div>
                 </div>
-
-                <div className="p-5">
-                  <h3 className="line-clamp-2 text-base font-bold text-navy-950 group-hover:text-champagne-600">
-                    {property.title}
-                  </h3>
-
-                  <p className="mt-2 flex items-center gap-1.5 text-xs text-stone-500 line-clamp-1">
-                    <MapPin size={14} className="shrink-0 text-champagne-500" />
-                    {property.address}
-                  </p>
-
-                  <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-3 text-xs text-stone-600">
-                    <span className="flex items-center gap-1"><Bed size={15} /> {property.bedrooms} PN</span>
-                    <span className="flex items-center gap-1"><Bath size={15} /> {property.bathrooms} WC</span>
-                    <span className="flex items-center gap-1 font-semibold text-navy-900"><CheckCircle size={14} className="text-emerald-500" /> {property.legal_status}</span>
-                  </div>
-                </div>
-              </Link>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* 3. MÔI GIỚI ĐƯỢC XÁC MINH (Verified Brokers) */}
-      <section id="brokers" className="border-t border-champagne-200/60 bg-sand-100/60 py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="text-center">
-            <span className="text-xs font-bold uppercase tracking-widest text-champagne-600">Đội Ngũ Chuyên Gia</span>
-            <h2 className="mt-1 text-2xl font-black text-navy-950 sm:text-3xl">Môi Giới Phụ Trách Khu Vực</h2>
-            <p className="mt-1 text-xs text-stone-500">Mỗi sản phẩm đều có chuyên viên tư vấn am hiểu thị trường, hỗ trợ đàm phán và thủ tục pháp lý.</p>
-          </div>
-
-          <div className="mt-10 grid gap-6 sm:grid-cols-3">
-            {brokers.map((broker) => (
-              <div key={broker.id} className="rounded-3xl border border-champagne-200 bg-white p-6 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="relative h-14 w-14 overflow-hidden rounded-2xl border-2 border-champagne-400">
-                    <Image src={broker.avatar_url} alt={broker.full_name} fill className="object-cover" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-navy-950">{broker.full_name}</h3>
-                    <p className="text-xs font-semibold text-champagne-600">{broker.experience_years} năm kinh nghiệm</p>
-                    <p className="text-[11px] text-stone-500">CCHN: {broker.license_number || 'Đã xác minh'}</p>
-                  </div>
-                </div>
-                <p className="mt-4 text-xs text-stone-600 line-clamp-3 leading-relaxed">{broker.bio}</p>
-                <div className="mt-4 flex gap-2">
-                  <a
-                    href={`tel:${broker.phone}`}
-                    className="flex-1 rounded-xl bg-navy-900 py-2.5 text-center text-xs font-bold text-champagne-300 hover:bg-navy-800"
-                  >
-                    Gọi: {broker.phone}
-                  </a>
-                  <a
-                    href={`https://zalo.me/${broker.zalo_phone || broker.phone}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-xl border border-stone-200 px-3 py-2.5 text-center text-xs font-bold text-navy-950 hover:bg-sand-50"
-                  >
-                    Zalo
-                  </a>
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="py-8 text-center text-xs text-stone-500">Chưa có lịch hẹn nào được ghi nhận.</p>
+            )}
           </div>
         </div>
-      </section>
-    </>
+
+        {/* CỘT 2: KHÁCH HÀNG TIỀM NĂNG (LEADS) */}
+        <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-base font-black text-navy-950">
+              <Users size={18} className="text-champagne-600" /> Khách Hàng Tiềm Năng (Leads) ({leadsList.length})
+            </h2>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {leadsList.length > 0 ? (
+              leadsList.map((lead) => (
+                <div key={lead.id} className="rounded-2xl border border-stone-200 bg-sand-50/60 p-4 transition hover:bg-sand-50">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold text-navy-950">
+                        {lead.customer_name} · <a href={`tel:${lead.customer_phone}`} className="text-blue-700 underline">{lead.customer_phone}</a>
+                      </p>
+                      <p className="mt-1 text-xs text-stone-600">{lead.note || 'Khách quan tâm nguồn hàng'}</p>
+                      <p className="mt-1.5 text-[11px] text-stone-400">
+                        Ngày nhận: {new Date(lead.created_at).toLocaleDateString('vi-VN')}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-blue-100 px-3 py-1 text-[10px] font-bold uppercase text-blue-800">
+                      {lead.stage}
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="py-8 text-center text-xs text-stone-500">Chưa có khách hàng nào trong giỏ hàng.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
