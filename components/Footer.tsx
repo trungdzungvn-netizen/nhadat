@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Building2, MapPin, Phone, Mail, ShieldCheck, UserPlus, Send } from 'lucide-react';
+import { Building2, MapPin, Phone, Mail, ShieldCheck, UserPlus, Send, Lock } from 'lucide-react';
 
 export default function Footer() {
   return (
@@ -86,8 +86,19 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-12 border-t border-navy-900 pt-6 text-center text-xs text-stone-500">
-          © {new Date().getFullYear()} Nhà Đất Kết Nối. Professional Real Estate Brokerage. All rights reserved.
+        {/* NÚT ĐĂNG NHẬP CUỐI MÀN HÌNH VÀ BẢN QUYỀN */}
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-navy-900 pt-6 text-xs text-stone-500 sm:flex-row">
+          <div>
+            © {new Date().getFullYear()} Nhà Đất Kết Nối. Professional Real Estate Brokerage. All rights reserved.
+          </div>
+          <div>
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-navy-800 bg-navy-900/60 px-3 py-1.5 text-[11px] font-semibold text-stone-400 transition hover:border-champagne-400/50 hover:bg-navy-900 hover:text-champagne-300"
+            >
+              <Lock size={12} className="text-champagne-400" /> Đăng nhập Môi giới / Quản trị
+            </Link>
+          </div>
         </div>
       </div>
     </footer>
