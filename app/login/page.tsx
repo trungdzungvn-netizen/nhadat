@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Building2, ShieldCheck, Lock, Mail, ArrowRight, UserCheck } from 'lucide-react';
+import { Building2, Lock, Mail, ArrowRight } from 'lucide-react';
 import { loginUser } from '@/app/actions/auth';
 
 export default function LoginPage() {
@@ -90,16 +90,6 @@ export default function LoginPage() {
             {loading ? 'Đang xác thực...' : 'VÀO WORKSPACE'} <ArrowRight size={14} />
           </button>
         </form>
-
-        <div className="mt-6 rounded-2xl bg-sand-100 p-4 text-[11px] text-stone-600">
-          <p className="flex items-center gap-1.5 font-bold text-navy-950">
-            <ShieldCheck size={14} className="text-champagne-600" /> Phân quyền bảo mật:
-          </p>
-          <ul className="mt-1.5 space-y-1 list-disc pl-4 text-stone-500">
-            <li><strong>Môi giới:</strong> Chỉ xem và quản lý nguồn hàng, khách hàng và lịch hẹn được giao cho cá nhân.</li>
-            <li><strong>Admin:</strong> Xem toàn bộ dữ liệu hệ thống, quản lý tất cả môi giới và phân công nguồn hàng.</li>
-          </ul>
-        </div>
       </div>
     </div>
   );
