@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, ShieldCheck, CheckCircle, XCircle, Edit3, Phone } from 'lucide-react';
+import { ArrowLeft, ShieldCheck, CheckCircle, XCircle, Edit3, Phone, UserCheck } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { toggleBrokerVerification } from '@/app/actions/broker';
+import { adminApproveBroker } from '@/app/actions/public_submissions';
 import type { Broker } from '@/types';
 
 export const revalidate = 0;
@@ -45,7 +46,7 @@ export default async function AdminBrokersListPage({
           <ArrowLeft size={16} /> Quay lại Workspace
         </Link>
         <span className="rounded-full bg-rose-100 border border-rose-300 px-3 py-1 text-[11px] font-black text-rose-800">
-          Admin Portal · Quản Lý Đội Ngũ Môi Giới
+          Admin Portal · Quản Lý Thành Viên Môi Giới
         </span>
       </div>
 
@@ -59,19 +60,19 @@ export default async function AdminBrokersListPage({
         <div className="border-b border-stone-100 pb-4">
           <h1 className="text-xl font-black text-navy-950">Danh Sách Môi Giới Toàn Hệ Thống ({brokersList.length})</h1>
           <p className="mt-1 text-xs text-stone-500">
-            Cập nhật trực tiếp số điện thoại, địa bàn phụ trách, avatar, chứng chỉ hành nghề và trạng thái xác thực.
+            Phê duyệt tài khoản thành viên mới đăng ký, cấp quyền hoạt động, sửa thông tin và địa bàn phụ trách.
           </p>
         </div>
 
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full text-left text-xs text-navy-950 min-w-[760px]">
+          <table className="w-full text-left text-xs text-navy-950 min-w-[800px]">
             <thead className="bg-sand-100 text-[11px] uppercase tracking-wider text-stone-600">
               <tr>
                 <th className="p-3.5 rounded-l-xl">Môi giới</th>
-                <th className="p-3.5">Điện thoại / Zalo</th>
+                <th className="p-3.5">Điện thoại / Email</th>
                 <th className="p-3.5">Địa bàn phụ trách</th>
-                <th className="p-3.5">Chứng chỉ</th>
-                <th className="p-3.5">Trạng thái</th>
+                <th className="p-3.5">Duyệt tài khoản</th>
+                <th className="p-3.5">Xác thực uy tín</th>
                 <th className="p-3.5 rounded-r-xl text-right">Thao tác</th>
               </tr>
             </thead>
@@ -101,7 +102,7 @@ export default async function AdminBrokersListPage({
                   </td>
                   <td className="p-3.5">
                     <p className="font-semibold text-navy-900">{broker.phone}</p>
-                    <p className="text-[11px] text-stone-400">Zalo: {broker.zalo_phone || broker.phone}</p>
+                    <p className="text-[11px] text-stone-400">{broker.user_id ? 'Đã có tài khoản Auth' : 'Chưa liên kết'}</p>
                   </td>
                   <td className="p-3.5">
                     <div className="flex flex-wrap gap-1 max-w-xs">
@@ -113,29 +114,47 @@ export default async function AdminBrokersListPage({
                     </div>
                   </td>
                   <td className="p-3.5">
-                    <span className="font-medium text-stone-600">
-                      {broker.license_number || 'Chưa cung cấp'}
-                    </span>
+                    {broker.status === 'pending' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
+                        Chờ duyệt (Pending)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                        <CheckCircle size={12} /> Đã kích hoạt
+                      </span>
+                    )}
                   </td>
                   <td className="p-3.5">
                     {broker.is_verified ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
-                        <CheckCircle size={12} /> Đã xác thực
+                        <CheckCircle size={12} /> Tích xanh
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
-                        <XCircle size={12} /> Chưa xác thực
+                      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-0.5 text-[10px] font-bold text-stone-600">
+                        Chưa xác thực
                       </span>
                     )}
                   </td>
                   <td className="p-3.5 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Link
-                        href={`/dashboard/brokers/${broker.id}/edit`}
-                        className="inline-flex items-center gap-1 rounded-xl border border-navy-300 bg-white px-3 py-1.5 text-[11px] font-bold text-navy-900 shadow-sm transition hover:bg-sand-100"
-                      >
-                        <Edit3 size={13} /> Sửa
-                      </Link>
+                      {/* NÚT DUYỆT / HỦY DUYỆT TÀI KHOẢN MÔI GIỚI */}
+                      {broker.status === 'pending' ? (
+                        <form action={adminApproveBroker.bind(null, broker.id, 'approved')}>
+                          <button
+                            type="submit"
+                            className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm hover:bg-emerald-700"
+                          >
+                            Duyệt tài khoản
+                          </button>
+                        </form>
+                      ) : (
+                        <Link
+                          href={`/dashboard/brokers/${broker.id}/edit`}
+                          className="inline-flex items-center gap-1 rounded-xl border border-navy-300 bg-white px-3 py-1.5 text-[11px] font-bold text-navy-900 shadow-sm transition hover:bg-sand-100"
+                        >
+                          <Edit3 size={13} /> Sửa
+                        </Link>
+                      )}
 
                       <form action={toggleBrokerVerification.bind(null, broker.id, broker.is_verified)}>
                         <button
@@ -143,10 +162,10 @@ export default async function AdminBrokersListPage({
                           className={`rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition ${
                             broker.is_verified
                               ? 'border border-stone-200 text-stone-500 hover:text-rose-600 hover:border-rose-200'
-                              : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : 'bg-navy-900 text-champagne-300 hover:bg-navy-800'
                           }`}
                         >
-                          {broker.is_verified ? 'Hủy' : 'Duyệt'}
+                          {broker.is_verified ? 'Hủy tích xanh' : 'Cấp tích xanh'}
                         </button>
                       </form>
                     </div>

@@ -3,7 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { 
   Building, Users, Calendar, ShieldCheck, LogOut, 
-  Clock, Filter, Plus
+  Clock, Filter, Plus, AlertCircle, CheckCircle2 
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { logoutUser } from '@/app/actions/auth';
@@ -18,11 +18,13 @@ export default async function DashboardPage({
 }) {
   const supabase = await createClient();
 
+  // 1. Kiểm tra đăng nhập
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     redirect('/login');
   }
 
+  // 2. Lấy thông tin Môi giới tương ứng với user đang đăng nhập
   const { data: currentBrokerData } = await supabase
     .from('brokers')
     .select('*')
@@ -32,6 +34,49 @@ export default async function DashboardPage({
   const isAdmin = currentBrokerData?.is_admin === true || user.email?.includes('admin');
   const currentBroker = currentBrokerData as Broker | null;
 
+  // 3. NẾU MÔI GIỚI MỚI ĐĂNG KÝ VÀ ĐANG CHỜ DUYỆT (status = 'pending')
+  if (!isAdmin && currentBroker?.status === 'pending') {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+        <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-8 text-center sm:p-12">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+            <Clock size={36} className="animate-spin-slow" />
+          </div>
+          <h1 className="mt-5 text-2xl font-black text-navy-950">Hồ Sơ Đang Chờ Phê Duyệt</h1>
+          <p className="mt-2 text-xs text-stone-600 max-w-md mx-auto leading-relaxed">
+            Xin chào <strong>{currentBroker?.full_name || user.email}</strong>, tài khoản thành viên môi giới của bạn đã được tạo thành công và đang được <strong>Ban Quản Trị thẩm định hồ sơ & chứng chỉ</strong>.
+          </p>
+
+          <div className="mt-8 rounded-2xl bg-white p-5 border border-amber-200/80 text-left text-xs space-y-2 max-w-md mx-auto">
+            <p className="font-bold text-navy-950">Thông tin hồ sơ đăng ký:</p>
+            <p className="text-stone-600">• Họ tên: {currentBroker?.full_name}</p>
+            <p className="text-stone-600">• Điện thoại: {currentBroker?.phone}</p>
+            <p className="text-stone-600">• Địa bàn: {currentBroker?.coverage_areas?.join(', ')}</p>
+            <p className="text-stone-600">• Trạng thái: <span className="font-bold text-amber-700">Chờ duyệt (Pending)</span></p>
+          </div>
+
+          <div className="mt-8 flex justify-center gap-3">
+            <Link
+              href="/dashboard/profile"
+              className="rounded-xl border border-stone-200 bg-white px-5 py-2.5 text-xs font-bold text-navy-950 hover:bg-stone-50"
+            >
+              Cập nhật lại hồ sơ
+            </Link>
+            <form action={logoutUser}>
+              <button
+                type="submit"
+                className="rounded-xl bg-navy-900 px-5 py-2.5 text-xs font-bold text-champagne-300 hover:bg-navy-800"
+              >
+                Đăng xuất
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. MÔI GIỚI ĐÃ ĐƯỢC DUYỆT (approved) HOẶC ADMIN -> VÀO WORKSPACE BÌNH THƯỜNG
   let propQuery = supabase.from('properties').select('*, brokers(*)').order('created_at', { ascending: false });
   let leadQuery = supabase.from('leads').select('*, properties(*)').order('created_at', { ascending: false });
   let apptQuery = supabase.from('appointments').select('*, properties(*)').order('created_at', { ascending: false });
@@ -96,7 +141,7 @@ export default async function DashboardPage({
             <p className="mt-0.5 text-xs text-stone-500">
               {isAdmin 
                 ? 'Đang xem toàn bộ dữ liệu sàn TP.HCM – Đồng Nai' 
-                : `Khu vực: ${currentBroker?.coverage_areas?.join(', ') || 'Chưa cập nhật'}`}
+                : `Khu vực phụ trách: ${currentBroker?.coverage_areas?.join(', ') || 'Chưa cập nhật'}`}
             </p>
           </div>
         </div>
@@ -174,7 +219,7 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* THỐNG KÊ */}
+      {/* THỐNG KÊ 4 PHÂN HỆ CỐT LÕI */}
       <div className="mt-6 grid gap-4 sm:grid-cols-4">
         <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between text-navy-900">
