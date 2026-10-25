@@ -11,7 +11,13 @@ export type Broker = {
   experience_years: number;
   is_verified: boolean;
   rating: number;
+  total_reviews_count?: number;
   bio: string;
+  is_admin?: boolean;
+  status?: string;
+  kpi_target_deals?: number;
+  kpi_target_leads?: number;
+  kpi_target_appts?: number;
   created_at: string;
 };
 
@@ -35,7 +41,7 @@ export type Property = {
   images: string[];
   is_featured: boolean;
   is_exclusive: boolean;
-  status: 'available' | 'reserved' | 'sold';
+  status: 'available' | 'reserved' | 'sold' | 'pending';
   views_count: number;
   created_at: string;
   brokers?: Broker;
@@ -66,4 +72,19 @@ export type Appointment = {
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
   created_at: string;
   properties?: Property;
+};
+
+export type BrokerReview = {
+  id: string;
+  broker_id: string;
+  customer_name: string;
+  customer_phone?: string;
+  rating: number;
+  criteria_attitude: number;
+  criteria_expertise: number;
+  criteria_negotiation: number;
+  comment: string;
+  is_approved: boolean;
+  created_at: string;
+  brokers?: Broker;
 };

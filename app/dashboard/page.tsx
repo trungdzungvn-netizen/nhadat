@@ -111,6 +111,13 @@ export default async function DashboardPage({
           </Link>
 
           <Link
+            href="/dashboard/kpi"
+            className="flex items-center gap-1.5 rounded-xl border border-champagne-400 bg-sand-50 px-4 py-2.5 text-xs font-black text-champagne-800 shadow-sm transition hover:bg-champagne-100"
+          >
+            <ShieldCheck size={16} className="text-champagne-600" /> KPI & Review Môi Giới
+          </Link>
+
+          <Link
             href="/dashboard/profile"
             className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs font-bold text-navy-950 shadow-sm transition hover:bg-sand-50"
           >
