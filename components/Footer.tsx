@@ -1,9 +1,37 @@
 import Link from 'next/link';
-import { Building2, MapPin, Phone, Mail, ShieldCheck } from 'lucide-react';
+import { Building2, MapPin, Phone, Mail, ShieldCheck, UserPlus, Send } from 'lucide-react';
 
 export default function Footer() {
   return (
     <footer className="border-t border-navy-800 bg-navy-950 text-white">
+      {/* KHỐI BOTTOM CALL-TO-ACTION: ĐĂNG KÝ MÔI GIỚI & GỬI BẤT ĐỘNG SẢN */}
+      <div className="border-b border-navy-800/80 bg-navy-900/60 py-8">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-4 sm:flex-row sm:px-6">
+          <div className="text-center sm:text-left">
+            <h3 className="text-base font-black text-white sm:text-lg">
+              Đồng Hành Cùng Mạng Lưới Bất Động Sản Chuyên Nghiệp
+            </h3>
+            <p className="mt-1 text-xs text-stone-400">
+              Đăng ký tham gia đội ngũ môi giới hoặc gửi sản phẩm cần giao dịch để Admin thẩm định duyệt sàn.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/register-broker"
+              className="inline-flex items-center gap-2 rounded-full border border-champagne-400/40 bg-navy-950 px-5 py-3 text-xs font-bold text-champagne-300 shadow-md transition hover:border-champagne-400 hover:bg-navy-900"
+            >
+              <UserPlus size={16} className="text-champagne-400" /> Đăng Ký Thành Viên Môi Giới
+            </Link>
+            <Link
+              href="/submit-property"
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-champagne-400 to-champagne-600 px-5 py-3 text-xs font-black text-navy-950 shadow-md transition hover:brightness-105"
+            >
+              <Send size={15} /> Gửi Bất Động Sản Cần Giao Dịch
+            </Link>
+          </div>
+        </div>
+      </div>
+
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:py-16">
         <div className="grid gap-10 md:grid-cols-4">
           <div className="space-y-4 md:col-span-1">
